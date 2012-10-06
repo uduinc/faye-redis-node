@@ -78,6 +78,18 @@ Engine.prototype = {
   },
 
   destroyClient: function(clientId, callback, context) {
+    var timeout = this._server.timeout, self = this;
+
+    if (timeout) {
+      this._redis.zadd(this._ns + '/clients', 0, clientId, function() {
+        self._removeClient(clientId, callback, context);
+      });
+    } else {
+      this._removeClient(clientId, callback, context);
+    }
+  },
+
+  _removeClient: function(clientId, callback, context) {
     var self = this;
 
     this._redis.smembers(this._ns + '/clients/' + clientId + '/channels', function(error, channels) {
@@ -184,7 +196,7 @@ Engine.prototype = {
         if (i === n) return releaseLock();
 
         clients.forEach(function(clientId) {
-          this.destroyClient(clientId, function() {
+          this._removeClient(clientId, function() {
             i += 1;
             if (i === n) releaseLock();
           }, this);
