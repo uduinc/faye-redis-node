@@ -70,7 +70,7 @@ Engine.prototype = {
 
     this._redis.zscore(this._ns + '/clients', clientId, function(error, score) {
       if (timeout) {
-        callback.call(context, score > new Date().getTime() - 1000 * 2 * timeout);
+        callback.call(context, score > new Date().getTime() - 1000 * 1.75 * timeout);
       } else {
         callback.call(context, score !== null);
       }
