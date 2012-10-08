@@ -160,6 +160,7 @@ Engine.prototype = {
         self._server.debug('Queueing for client ?: ?', clientId, message);
         self._redis.rpush(self._ns + '/clients/' + clientId + '/messages', jsonMessage);
         self._redis.publish(self._ns + '/notifications', clientId);
+        self._redis.expire(self._ns + '/clients/' + clientId + '/messages', 3600)
         self._checkClient(clientId);
       });
     };
