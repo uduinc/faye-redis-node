@@ -196,7 +196,7 @@ Engine.prototype = {
         if (i === n) return releaseLock();
 
         clients.forEach(function(clientId) {
-          this._removeClient(clientId, function() {
+          this.destroyClient(clientId, function() {
             i += 1;
             if (i === n) releaseLock();
           }, this);
