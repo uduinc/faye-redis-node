@@ -160,12 +160,21 @@ Engine.prototype = {
         self._server.debug('Queueing for client ?: ?', clientId, message);
         self._redis.rpush(self._ns + '/clients/' + clientId + '/messages', jsonMessage);
         self._redis.publish(self._ns + '/notifications', clientId);
+        self._checkClient(clientId);
       });
     };
     keys.push(notify);
     this._redis.sunion.apply(this._redis, keys);
 
     this._server.trigger('publish', message.clientId, message.channel, message.data);
+  },
+
+  _checkClient: function(clientId) {
+    var self = this;
+
+    this.clientExists(clientId, function(exists) {
+      if (!exists) self.destroyClient(clientId);
+    });
   },
 
   emptyQueue: function(clientId) {
