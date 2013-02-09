@@ -1,33 +1,120 @@
+// Constructor for multiRedis. It sets up a connection for each provided Redis
+// URL and adds them to a ketema ring. It also connects to the first one an
+// additional time for pub/sub duties.
+var multiRedis = function(urls) {
+  var consistentHashing = require('consistent-hashing'),
+      self = this;
+
+  self.ring        = new consistentHashing(urls);
+  self.servers     = {};
+  self.connections = {};
+  self.pubSubUrl   = urls[0];
+
+  urls.forEach(function(url) {
+    var options = self.parse(url);
+
+    self.servers[url] = options;
+    self.connections[url] = self.connect(options);
+  });
+
+  self.subscriber  = self.connect(self.servers[self.pubSubUrl]);
+};
+
+// Commands that are shardable (i.e., take a key as the first argument) and
+// used by the faye-redis engine.
+multiRedis.COMMANDS = ['zadd', 'zscore', 'smembers', 'del', 'zrem', 'sadd',
+  'srem', 'rpush', 'expire', 'setnx', 'get', 'getset', 'zrangebyscore',
+  'sunion'];
+
+multiRedis.prototype = {
+  // Grab the connection from the ring for the designated pub/sub server
+  // and delegate a publish call to it.
+  publish: function() {
+    var connection = this.connections[this.pubSubUrl];
+    return connection.publish.apply(connection, arguments);
+  },
+
+  // Returns a connection based on a single key for dispatching multiple
+  // connections atomically. You should only commit operations against a single
+  // key during a multi due to the sharding.
+  multi: function(key) {
+    return this.connectionFor(key).multi();
+  },
+
+  // Returns a new Redis connection. Expects a server configuration object,
+  // e.g.:
+  //
+  //   { port: 6379,
+  //   hostname: 'localhost',
+  //   database: 0,
+  //   password: 'chunkybacon' }
+  connect: function(server) {
+    var redis = require('redis');
+    var connection = redis.createClient(server.port, server.host);
+
+    connection.select(server.database);
+
+    if (server.password)
+      connection.auth(server.password);
+
+    return connection;
+  },
+
+  // Parses a URL and returns a server configuration object, e.g.:
+  //
+  // redis://:chunkybacon@localhost:6379/0
+  parse: function(url) {
+    var url = require('url').parse(url),
+        connection = { hostname: url.hostname, port: url.port };
+
+    if (url.auth)
+      connection.password = url.auth.split(":")[1];
+
+    if (url.path) {
+      connection.database = url.path.substring(1);
+    } else {
+      connection.database = 0;
+    }
+
+    return connection;
+  },
+
+  // Closes all connections to Redis.
+  end: function() {
+    var self = this;
+
+    self.subscriber.end();
+
+    Object.keys(self.servers).forEach(function(url) {
+      self.connections[url].end()
+    });
+  },
+
+  // Returns a connection for a specific key.
+  connectionFor: function(key) {
+    return this.connections[this.ring.getNode(key)];
+  }
+};
+
+// Loops through the commands and adds each one to multiRedis.
+multiRedis.COMMANDS.forEach(function(command) {
+  multiRedis.prototype[command] = function() {
+    var connection = this.connectionFor(arguments[0]);
+    return connection[command].apply(connection, arguments);
+  }
+});
+
 var Engine = function(server, options) {
-  this._server  = server;
   this._options = options || {};
 
-  var redis  = require('redis'),
-      host   = this._options.host     || this.DEFAULT_HOST,
-      port   = this._options.port     || this.DEFAULT_PORT,
-      db     = this._options.database || this.DEFAULT_DATABASE,
-      auth   = this._options.password,
-      gc     = this._options.gc       || this.DEFAULT_GC,
-      socket = this._options.socket;
+  var gc   = this._options.gc || this.DEFAULT_GC,
+      self = this;
 
-  this._ns  = this._options.namespace || '';
+  this._server     = server;
+  this._ns         = this._options.namespace || '';
+  this._redis      = new multiRedis(options.servers);
+  this._subscriber = this._redis.subscriber;
 
-  if (socket) {
-    this._redis = redis.createClient(socket, {no_ready_check: true});
-    this._subscriber = redis.createClient(socket, {no_ready_check: true});
-  } else {
-    this._redis = redis.createClient(port, host, {no_ready_check: true});
-    this._subscriber = redis.createClient(port, host, {no_ready_check: true});
-  }
-
-  if (auth) {
-    this._redis.auth(auth);
-    this._subscriber.auth(auth);
-  }
-  this._redis.select(db);
-  this._subscriber.select(db);
-
-  var self = this;
   this._subscriber.subscribe(this._ns + '/notifications');
   this._subscriber.on('message', function(topic, message) {
     self.emptyQueue(message);
@@ -41,9 +128,6 @@ Engine.create = function(server, options) {
 };
 
 Engine.prototype = {
-  DEFAULT_HOST:     'localhost',
-  DEFAULT_PORT:     6379,
-  DEFAULT_DATABASE: 0,
   DEFAULT_GC:       60,
   LOCK_TIMEOUT:     120,
 
@@ -182,7 +266,7 @@ Engine.prototype = {
     if (!this._server.hasConnection(clientId)) return;
 
     var key   = this._ns + '/clients/' + clientId + '/messages',
-        multi = this._redis.multi(),
+        multi = this._redis.multi(key),
         self  = this;
 
     multi.lrange(key, 0, -1, function(error, jsonMessages) {
