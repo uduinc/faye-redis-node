@@ -49,7 +49,7 @@ multiRedis.prototype = {
   //   password: 'chunkybacon' }
   connect: function(server) {
     var redis = require('redis');
-    var connection = redis.createClient(server.port, server.host);
+    var connection = redis.createClient(server.port, server.hostname);
 
     connection.select(server.database);
 
