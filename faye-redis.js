@@ -254,7 +254,8 @@ Engine.prototype = {
     };
 
     keys.forEach(function(key) {
-      self._redis.smembers.apply(self._redis, [key, notify]);
+      if (key.indexOf("*") == -1)
+        self._redis.smembers(key, notify);
     });
 
     this._server.trigger('publish', message.clientId, message.channel, message.data);
