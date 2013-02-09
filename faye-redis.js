@@ -23,8 +23,7 @@ var multiRedis = function(urls) {
 // Commands that are shardable (i.e., take a key as the first argument) and
 // used by the faye-redis engine.
 multiRedis.COMMANDS = ['zadd', 'zscore', 'smembers', 'del', 'zrem', 'sadd',
-  'srem', 'rpush', 'expire', 'setnx', 'get', 'getset', 'zrangebyscore',
-  'sunion'];
+  'srem', 'rpush', 'expire', 'setnx', 'get', 'getset', 'zrangebyscore']
 
 multiRedis.prototype = {
   // Grab the connection from the ring for the designated pub/sub server
@@ -236,20 +235,27 @@ Engine.prototype = {
     this._server.debug('Publishing message ?', message);
 
     var self        = this,
+        notified    = [],
         jsonMessage = JSON.stringify(message),
         keys        = channels.map(function(c) { return self._ns + '/channels' + c });
 
     var notify = function(error, clients) {
       clients.forEach(function(clientId) {
-        self._server.debug('Queueing for client ?: ?', clientId, message);
-        self._redis.rpush(self._ns + '/clients/' + clientId + '/messages', jsonMessage);
-        self._redis.publish(self._ns + '/notifications', clientId);
-        self._redis.expire(self._ns + '/clients/' + clientId + '/messages', 3600)
-        self._checkClient(clientId);
+        if (notified.indexOf(clientId) == -1) {
+          self._server.debug('Queueing for client ?: ?', clientId, message);
+          self._redis.rpush(self._ns + '/clients/' + clientId + '/messages', jsonMessage);
+          self._redis.publish(self._ns + '/notifications', clientId);
+          self._redis.expire(self._ns + '/clients/' + clientId + '/messages', 3600)
+          self._checkClient(clientId);
+
+          notified.push(clientId);
+        }
       });
     };
-    keys.push(notify);
-    this._redis.sunion.apply(this._redis, keys);
+
+    keys.forEach(function(key) {
+      self._redis.smembers.apply(self._redis, [key, notify]);
+    });
 
     this._server.trigger('publish', message.clientId, message.channel, message.data);
   },
