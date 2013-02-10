@@ -2,10 +2,10 @@
 // Redis URL and adds them to a ketema ring. One connection is used for
 // commands and the other is used for pub/sub subscriptions.
 var multiRedis = function(urls) {
-  var consistentHashing = require('consistent-hashing'),
-      self = this;
+  var hasher = require('consistent-hashing'),
+      self   = this;
 
-  self.ring          = new consistentHashing(urls);
+  self.ring          = new hasher(urls);
   self.urls          = urls;
   self.connections   = {};
   self.subscriptions = {};
@@ -28,6 +28,7 @@ multiRedis.prototype = {
   // and delegate a publish call to it.
   publish: function(topic, message) {
     var connection = this.connectionFor(message);
+
     connection.publish.apply(connection, arguments);
   },
 
@@ -59,8 +60,8 @@ multiRedis.prototype = {
   //   database: 0,
   //   password: 'chunkybacon' }
   connect: function(server) {
-    var redis = require('redis');
-    var connection = redis.createClient(server.port, server.hostname);
+    var redis      = require('redis'),
+        connection = redis.createClient(server.port, server.hostname);
 
     connection.select(server.database);
 
@@ -74,7 +75,7 @@ multiRedis.prototype = {
   //
   // redis://:chunkybacon@localhost:6379/0
   parse: function(url) {
-    var url = require('url').parse(url),
+    var url        = require('url').parse(url),
         connection = { hostname: url.hostname, port: url.port };
 
     if (url.auth)
