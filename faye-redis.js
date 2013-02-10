@@ -5,19 +5,19 @@ var multiRedis = function(urls) {
   var consistentHashing = require('consistent-hashing'),
       self = this;
 
-  self.ring        = new consistentHashing(urls);
-  self.servers     = {};
-  self.connections = {};
-  self.pubSubUrl   = urls[0];
+  self.ring          = new consistentHashing(urls);
+  self.urls          = urls;
+  self.servers       = {};
+  self.connections   = {};
+  self.subscriptions = {};
 
   urls.forEach(function(url) {
     var options = self.parse(url);
 
     self.servers[url] = options;
     self.connections[url] = self.connect(options);
+    self.subscriptions[url] = self.connect(options);
   });
-
-  self.subscriber  = self.connect(self.servers[self.pubSubUrl]);
 };
 
 // Commands that are shardable (i.e., take a key as the first argument) and
@@ -26,11 +26,22 @@ multiRedis.COMMANDS = ['zadd', 'zscore', 'smembers', 'del', 'zrem', 'sadd',
   'srem', 'rpush', 'expire', 'setnx', 'get', 'getset', 'zrangebyscore']
 
 multiRedis.prototype = {
-  // Grab the connection from the ring for the designated pub/sub server
+  // Grab the connection from the ring for the pub/sub server for the message
   // and delegate a publish call to it.
-  publish: function() {
-    var connection = this.connections[this.pubSubUrl];
-    return connection.publish.apply(connection, arguments);
+  publish: function(topic, message) {
+    var connection = this.connectionFor(message);
+    connection.publish.apply(connection, arguments);
+  },
+
+  subscribe: function(topic, callback) {
+    var self = this;
+
+    self.urls.forEach(function(url) {
+      var subscription = self.subscriptions[url];
+
+      subscription.subscribe(topic);
+      subscription.on('message', callback);
+    });
   },
 
   // Returns a connection based on a single key for dispatching multiple
@@ -82,14 +93,15 @@ multiRedis.prototype = {
   end: function() {
     var self = this;
 
-    self.subscriber.end();
+    self.urls.forEach(function(url) {
+      self.connections[url].end();
 
-    Object.keys(self.servers).forEach(function(url) {
-      self.connections[url].end()
+      self.subscriptions[url].unsubscribe();
+      self.subscriptions[url].end();
     });
   },
 
-  // Returns a connection for a specific key.
+  // Returns a connection for a given key.
   connectionFor: function(key) {
     return this.connections[this.ring.getNode(key)];
   }
@@ -112,10 +124,8 @@ var Engine = function(server, options) {
   this._server     = server;
   this._ns         = this._options.namespace || '';
   this._redis      = new multiRedis(options.servers);
-  this._subscriber = this._redis.subscriber;
 
-  this._subscriber.subscribe(this._ns + '/notifications');
-  this._subscriber.on('message', function(topic, message) {
+  this._redis.subscribe(this._ns + '/notifications', function(topic, message) {
     self.emptyQueue(message);
   });
 
@@ -132,8 +142,6 @@ Engine.prototype = {
 
   disconnect: function() {
     this._redis.end();
-    this._subscriber.unsubscribe();
-    this._subscriber.end();
     clearInterval(this._gc);
   },
 
