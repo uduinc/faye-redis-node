@@ -1,6 +1,6 @@
-// Constructor for multiRedis. It sets up a connection for each provided Redis
-// URL and adds them to a ketema ring. It also connects to the first one an
-// additional time for pub/sub duties.
+// Constructor for multiRedis. It sets up two connections for each provided
+// Redis URL and adds them to a ketema ring. One connection is used for
+// commands and the other is used for pub/sub subscriptions.
 var multiRedis = function(urls) {
   var consistentHashing = require('consistent-hashing'),
       self = this;
@@ -33,6 +33,8 @@ multiRedis.prototype = {
     connection.publish.apply(connection, arguments);
   },
 
+  // Subscribe to the topic on all of the subscription connections and call
+  // the callback on a new message.
   subscribe: function(topic, callback) {
     var self = this;
 
