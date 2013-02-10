@@ -7,14 +7,12 @@ var multiRedis = function(urls) {
 
   self.ring          = new consistentHashing(urls);
   self.urls          = urls;
-  self.servers       = {};
   self.connections   = {};
   self.subscriptions = {};
 
   urls.forEach(function(url) {
     var options = self.parse(url);
 
-    self.servers[url] = options;
     self.connections[url] = self.connect(options);
     self.subscriptions[url] = self.connect(options);
   });
