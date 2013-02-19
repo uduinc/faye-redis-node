@@ -119,8 +119,13 @@ multiRedis.COMMANDS.forEach(function(command) {
 var Engine = function(server, options) {
   this._options = options || {};
 
-  var gc   = this._options.gc || this.DEFAULT_GC,
-      self = this;
+  var self = this, gc;
+
+  if (this._options.gc === false) {
+    gc = false;
+  } else {
+    gc = this._options.gc || this.DEFAULT_GC;
+  }
 
   this._server     = server;
   this._ns         = this._options.namespace || '';
@@ -130,7 +135,9 @@ var Engine = function(server, options) {
     self.emptyQueue(message);
   });
 
-  this._gc = setInterval(function() { self.gc() }, gc * 1000);
+  if (gc) {
+    this._gc = setInterval(function() { self.gc() }, gc * 1000);
+  }
 };
 
 Engine.create = function(server, options) {
