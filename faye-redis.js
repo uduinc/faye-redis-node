@@ -13,8 +13,25 @@ var multiRedis = function(urls) {
   urls.forEach(function(url) {
     var options = self.parse(url);
 
-    self.connections[url] = self.connect(options);
-    self.subscriptions[url] = self.connect(options);
+    var connection   = self.connect(options);
+    var subscription = self.connect(options);
+
+    connection.on("reconnecting", function(reconnectionInfo) {
+      console.log("***** connection reconnecting -- " + options);
+    });
+    connection.on("error", function(err) {
+      console.log("***** connection error -- " + err + " -- " + options);
+    });
+
+    subscription.on("reconnecting", function(reconnectionInfo) {
+      console.log("***** subscription reconnecting -- " + options);
+    });
+    subscription.on("error", function(err) {
+      console.log("***** subscription error -- " + err + " -- " + options);
+    });
+
+    self.connections[url]   = connection;
+    self.subscriptions[url] = subscription;
   });
 };
 
