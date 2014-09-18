@@ -363,19 +363,19 @@ Engine.prototype = {
         self        = this;
 
     var releaseLock = function() {
-      if (new Date().getTime() < expiry) self._redis.del(lockKey);
+      if (new Date().getTime() < expiry) connection.del(lockKey);
     };
 
     connection.setnx(lockKey, expiry, function(error, set) {
       if (set === 1) return callback.call(context, releaseLock);
 
-      self._redis.get(lockKey, function(error, timeout) {
+      connection.get(lockKey, function(error, timeout) {
         if (!timeout) return;
 
         var lockTimeout = parseInt(timeout, 10);
         if (currentTime < lockTimeout) return;
 
-        self._redis.getset(lockKey, expiry, function(error, oldValue) {
+        connection.getset(lockKey, expiry, function(error, oldValue) {
           if (oldValue !== timeout) return;
           callback.call(context, releaseLock);
         });
