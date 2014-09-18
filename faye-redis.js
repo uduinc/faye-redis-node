@@ -35,6 +35,7 @@ var multiRedis = function(urls) {
   });
 };
 
+// [ command, argument-to-shard-against ]
 multiRedis.COMMANDS = [
   ['smembers', 0],
   ['del', 0],
@@ -136,9 +137,12 @@ multiRedis.prototype = {
 
 // Loops through the commands and adds each one to multiRedis.
 multiRedis.COMMANDS.forEach(function(command) {
-  multiRedis.prototype[command[0]] = function() {
-    var connection = this.connectionFor(arguments[command[1]]);
-    return connection[command[0]].apply(connection, arguments);
+  var redisCommand = command[0],
+      argument = command[1];
+
+  multiRedis.prototype[redisCommand] = function() {
+    var connection = this.connectionFor(arguments[argument]);
+    return connection[redisCommand].apply(connection, arguments);
   }
 });
 
@@ -330,7 +334,9 @@ Engine.prototype = {
     var timeout = this._server.timeout;
     if (typeof timeout !== 'number') return;
 
-    this._redis.connections.forEach(function(connection){
+    this._redis.urls.forEach(function(url) {
+      var connection = this._redis.connections[url];
+
       this._withLock(connection, 'gc', function(releaseLock) {
         var cutoff = new Date().getTime() - 1000 * 2 * timeout,
             self   = this;
@@ -347,7 +353,7 @@ Engine.prototype = {
           }, self);
         });
       }, this);
-    });
+    }, this);
   },
 
   _withLock: function(connection, lockName, callback, context) {
