@@ -35,10 +35,19 @@ var multiRedis = function(urls) {
   });
 };
 
-// Commands that are shardable (i.e., take a key as the first argument) and
-// used by the faye-redis engine.
-multiRedis.COMMANDS = ['zadd', 'zscore', 'smembers', 'del', 'zrem', 'sadd',
-  'srem', 'rpush', 'expire', 'setnx', 'get', 'getset', 'zrangebyscore']
+multiRedis.COMMANDS = [
+  ['smembers', 0],
+  ['del', 0],
+  ['sadd', 0],
+  ['srem', 0],
+  ['rpush', 0],
+  ['expire', 0],
+  ['get', 0],
+  ['getset', 0],
+  ['zrem', 1],
+  ['zadd', 2],
+  ['zscore', 1]
+];
 
 multiRedis.prototype = {
   // Grab the connection from the ring for the pub/sub server for the message
@@ -127,9 +136,9 @@ multiRedis.prototype = {
 
 // Loops through the commands and adds each one to multiRedis.
 multiRedis.COMMANDS.forEach(function(command) {
-  multiRedis.prototype[command] = function() {
-    var connection = this.connectionFor(arguments[0]);
-    return connection[command].apply(connection, arguments);
+  multiRedis.prototype[command[0]] = function() {
+    var connection = this.connectionFor(arguments[command[1]]);
+    return connection[command[0]].apply(connection, arguments);
   }
 });
 
@@ -321,25 +330,27 @@ Engine.prototype = {
     var timeout = this._server.timeout;
     if (typeof timeout !== 'number') return;
 
-    this._withLock('gc', function(releaseLock) {
-      var cutoff = new Date().getTime() - 1000 * 2 * timeout,
-          self   = this;
+    this._redis.connections.forEach(function(connection){
+      this._withLock(connection, 'gc', function(releaseLock) {
+        var cutoff = new Date().getTime() - 1000 * 2 * timeout,
+            self   = this;
 
-      this._redis.zrangebyscore(this._ns + '/clients', 0, cutoff, function(error, clients) {
-        var i = 0, n = clients.length;
-        if (i === n) return releaseLock();
+        connection.zrangebyscore(this._ns + '/clients', 0, cutoff, function(error, clients) {
+          var i = 0, n = clients.length;
+          if (i === n) return releaseLock();
 
-        clients.forEach(function(clientId) {
-          this.destroyClient(clientId, function() {
-            i += 1;
-            if (i === n) releaseLock();
-          }, this);
-        }, self);
-      });
-    }, this);
+          clients.forEach(function(clientId) {
+            this.destroyClient(clientId, function() {
+              i += 1;
+              if (i === n) releaseLock();
+            }, this);
+          }, self);
+        });
+      }, this);
+    });
   },
 
-  _withLock: function(lockName, callback, context) {
+  _withLock: function(connection, lockName, callback, context) {
     var lockKey     = this._ns + '/locks/' + lockName,
         currentTime = new Date().getTime(),
         expiry      = currentTime + this.LOCK_TIMEOUT * 1000 + 1,
@@ -349,7 +360,7 @@ Engine.prototype = {
       if (new Date().getTime() < expiry) self._redis.del(lockKey);
     };
 
-    this._redis.setnx(lockKey, expiry, function(error, set) {
+    connection.setnx(lockKey, expiry, function(error, set) {
       if (set === 1) return callback.call(context, releaseLock);
 
       self._redis.get(lockKey, function(error, timeout) {
