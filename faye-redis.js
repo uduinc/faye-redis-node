@@ -146,6 +146,19 @@ multiRedis.COMMANDS.forEach(function(command) {
   }
 });
 
+// Creates a new Faye Redis engine.
+//
+// Options:
+//   disable_subscriptions If set to `true`, then this engine will not subscribe
+//                         to the notifications channel.
+//
+//   gc                    By default, this engine prunes inactive clients by
+//                         running a GC function on an interval. If this option
+//                         is omitted, the GC runs every DEFAULT_GC seconds.
+//                         To change the interval, set this option to an integer
+//                         number of seconds. To completely disable GC, set this
+//                         to `false`.
+//
 var Engine = function(server, options) {
   this._options = options || {};
 
@@ -161,7 +174,7 @@ var Engine = function(server, options) {
   this._ns         = this._options.namespace || '';
   this._redis      = new multiRedis(options.servers);
 
-  if (!this._options.publisher) {
+  if (!this._options.disable_subscriptions) {
     this._redis.subscribe(this._ns + '/notifications', function(topic, message) {
       self.emptyQueue(message);
     });
