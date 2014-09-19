@@ -159,6 +159,11 @@ multiRedis.COMMANDS.forEach(function(command) {
 //                         number of seconds. To completely disable GC, set this
 //                         to `false`.
 //
+//   gc_limit              By default, the GC tries to prune all expired
+//                         clients. This can be set to an integer, however, to
+//                         limit the number of expired clients to process in a
+//                         given GC cycle. Highly recommended.
+//
 var Engine = function(server, options) {
   this._options = options || {};
 
@@ -181,6 +186,7 @@ var Engine = function(server, options) {
   }
 
   if (gc) {
+    this._gc_limit = this._options.gc_limit;
     this._gc = setInterval(function() { self.gc() }, gc * 1000);
   }
 };
@@ -350,23 +356,36 @@ Engine.prototype = {
     if (typeof timeout !== 'number') return;
 
     this._redis.urls.forEach(function(url) {
+      console.log("[" + url + "] Running GC");
       var connection = this._redis.connections[url];
 
       this._withLock(connection, 'gc', function(releaseLock) {
         var cutoff = new Date().getTime() - 1000 * 2 * timeout,
-            self   = this;
+            self   = this,
+            args;
 
-        connection.zrangebyscore(this._ns + '/clients', 0, cutoff, function(error, clients) {
+        var pruneClientsCallback = function pruneClientsCallback(error, clients) {
           var i = 0, n = clients.length;
           if (i === n) return releaseLock();
 
           clients.forEach(function(clientId) {
             this.destroyClient(clientId, function() {
               i += 1;
-              if (i === n) releaseLock();
+              if (i === n) {
+                console.log("[" + url + "] Destroyed " + n + " expired clients");
+                releaseLock();
+              }
             }, this);
           }, self);
-        });
+        };
+
+        if (this._gc_limit) {
+          args = [this._ns + "/clients", 0, cutoff, "LIMIT", 0, this._gc_limit, pruneClientsCallback];
+        } else {
+          args = [this._ns + "/clients", 0, cutoff, pruneClientsCallback];
+        }
+
+        connection.zrangebyscore.apply(connection, args);
       }, this);
     }, this);
   },
