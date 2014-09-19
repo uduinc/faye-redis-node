@@ -161,9 +161,11 @@ var Engine = function(server, options) {
   this._ns         = this._options.namespace || '';
   this._redis      = new multiRedis(options.servers);
 
-  this._redis.subscribe(this._ns + '/notifications', function(topic, message) {
-    self.emptyQueue(message);
-  });
+  if (!this._options.publisher) {
+    this._redis.subscribe(this._ns + '/notifications', function(topic, message) {
+      self.emptyQueue(message);
+    });
+  }
 
   if (gc) {
     this._gc = setInterval(function() { self.gc() }, gc * 1000);
