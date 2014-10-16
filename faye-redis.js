@@ -304,7 +304,6 @@ Engine.prototype = {
           self._redis.rpush(self._ns + '/clients/' + clientId + '/messages', jsonMessage);
           self._redis.publish(self._ns + '/notifications', clientId);
           self._redis.expire(self._ns + '/clients/' + clientId + '/messages', 3600)
-          self._checkClient(clientId);
 
           notified.push(clientId);
         }
@@ -317,14 +316,6 @@ Engine.prototype = {
     });
 
     this._server.trigger('publish', message.clientId, message.channel, message.data);
-  },
-
-  _checkClient: function(clientId) {
-    var self = this;
-
-    this.clientExists(clientId, function(exists) {
-      if (!exists) self.destroyClient(clientId);
-    });
   },
 
   emptyQueue: function(clientId) {
