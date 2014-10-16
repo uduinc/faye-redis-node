@@ -338,7 +338,7 @@ Engine.prototype = {
     if (typeof timeout !== 'number') return;
 
     this._redis.urls.forEach(function(url) {
-      console.log("[" + url + "] Running GC");
+      this._server.debug("Running GC for ?", url);
       var connection = this._redis.connections[url];
 
       this._withLock(connection, 'gc', function(releaseLock) {
@@ -354,7 +354,7 @@ Engine.prototype = {
             this.destroyClient(clientId, function() {
               i += 1;
               if (i === n) {
-                console.log("[" + url + "] Destroyed " + n + " expired clients");
+                self._server.debug("Destroyed ? expired clients for ?", n, url);
                 releaseLock();
               }
             }, this);
