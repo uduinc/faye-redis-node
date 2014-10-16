@@ -218,6 +218,11 @@ Engine.prototype = {
   clientExists: function(clientId, callback, context) {
     var timeout = this._server.timeout;
 
+    if (clientId === undefined) {
+      this._server.debug("[RedisEngine#clientExists] undefined clientId, returning false");
+      return callback.call(context, false);
+    }
+
     this._redis.zscore(this._ns + '/clients', clientId, function(error, score) {
       if (timeout) {
         callback.call(context, score > new Date().getTime() - 1000 * 1.75 * timeout);
