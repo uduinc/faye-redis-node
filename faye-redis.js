@@ -349,6 +349,9 @@ Engine.prototype = {
         keys        = channels.map(function(c) { return self._ns + '/channels' + c });
 
     var notify = function(error, clients) {
+      if (error) {
+        return self._server.error("Failed to fetch clients, candidate channels ?: ?", keys, error);
+      }
       clients.forEach(function(clientId) {
         if (notified.indexOf(clientId) == -1) {
           self._server.debug('Queueing for client ?: ?', clientId, message);
