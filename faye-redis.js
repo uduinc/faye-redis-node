@@ -261,7 +261,7 @@ Engine.prototype = {
       }
 
       channels.forEach(function(channel) {
-        var channelsKey = this._ns + "/channels" + channel;
+        var channelsKey = self._ns + "/channels" + channel;
         self._redis.srem(channelsKey, clientId, function(error, res) {
           if (error) {
             return self._server.error("Failed to remove client ? from ?: ?", clientId, channelsKey, error);
