@@ -191,11 +191,13 @@ Engine.prototype = {
   },
 
   createClient: function(callback, context) {
-    var clientId = this._server.generateId(), self = this;
-    this._redis.zadd(this._ns + '/clients', 0, clientId, function(error, added) {
+    var clientId = this._server.generateId(),
+        score = new Date().getTime(),
+        self = this;
+
+    this._redis.zadd(this._ns + '/clients', score, clientId, function(error, added) {
       if (added === 0) return self.createClient(callback, context);
-      self._server.debug('Created new client ?', clientId);
-      self.ping(clientId);
+      self._server.debug('Created new client ? with score ?', clientId, score);
       self._server.trigger('handshake', clientId);
       callback.call(context, clientId);
     });
