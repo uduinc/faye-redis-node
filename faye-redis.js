@@ -400,6 +400,7 @@ Engine.prototype = {
         if (error) {
           return self._server.error("Failed to fetch clients to GC: ?", error);
         }
+        self._server.info("Running GC for ? clients ...", clients.length);
         clients.forEach(function(clientId) {
           self._server.debug("GC time for ? ...", clientId);
           self.destroyClient(clientId);
