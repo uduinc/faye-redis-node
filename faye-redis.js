@@ -220,32 +220,17 @@ Engine.prototype = {
     });
   },
 
-  destroyClient: function(clientId, callback, context) {
-    var timeout = this._server.timeout, self = this;
-
-    if (timeout) {
-      this._redis.zadd(this._ns + '/clients', 0, clientId, function(error, n) {
-        if (error) {
-          return self._server.error("Failed to reset score for client ?: ?", clientId, error);
-        }
-        self._deleteSubscriptions(clientId, callback, context);
-      });
-    } else {
-      this._deleteSubscriptions(clientId, callback, context);
-    }
-  },
-
-  // Remove subscriptions for a client.
+  // Destroy a client.
   //
-  // The first part of cleaning up a client, this removes the client ID from
-  // all the channels that it's a member of. This prevents messages from being
-  // published to that client.
+  // The first part of cleaning up a client is removing subscriptions, which
+  // removes the client ID from all the channels that it's a member of. This
+  // prevents messages from being published to that client.
   //
   // For any Redis failures, we simply return without calling any further
   // callbacks. This stops the client cleanup, but that's okay. Since the
   // client ID is still in the sorted set, it will get mopped up in the next
   // GC cycle (hopefully).
-  _deleteSubscriptions: function(clientId, callback, context) {
+  destroyClient: function(clientId, callback, context) {
     var self = this;
     var clientChannelsKey = this._ns + "/clients/" + clientId + "/channels";
 
@@ -286,25 +271,17 @@ Engine.prototype = {
         clientChannelsKey = this._ns + "/clients/" + clientId + "/channels",
         clientMessagesKey = this._ns + "/clients/" + clientId + "/messages";
 
-    this._redis.del(clientChannelsKey, function(error, res) {
+    this._redis.del(clientChannelsKey);
+    this._redis.del(clientMessagesKey);
+    this._redis.zrem(self._ns + "/clients", clientId, function(error, res) {
       if (error) {
-        return self._server.error("Failed to remove client channels ?: ?", clientChannelsKey, error);
+        return self._server.error("Failed to remove client ID ? from /clients: ?", clientId, error);
       }
-      self._redis.del(clientMessagesKey, function(error, res) {
-        if (error) {
-          return self._server.error("Failed to remove client messages ?: ?", clientMessagesKey, error);
-        }
-        self._redis.zrem(self._ns + "/clients", clientId, function(error, res) {
-          if (error) {
-            return self._server.error("Failed to remove client ID ? from /clients: ?", clientId, error);
-          }
-          self._server.debug("Destroyed client ? successfully", clientId);
-          self._server.trigger("disconnect", clientId);
-          if (callback) {
-            callback.call(context);
-          }
-        });
-      });
+      self._server.debug("Destroyed client ? successfully", clientId);
+      self._server.trigger("disconnect", clientId);
+      if (callback) {
+        callback.call(context);
+      }
     });
   },
 
