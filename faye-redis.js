@@ -271,25 +271,17 @@ Engine.prototype = {
         clientChannelsKey = this._ns + "/clients/" + clientId + "/channels",
         clientMessagesKey = this._ns + "/clients/" + clientId + "/messages";
 
-    this._redis.del(clientChannelsKey, function(error, res) {
+    this._redis.del(clientChannelsKey);
+    this._redis.del(clientMessagesKey);
+    this._redis.zrem(self._ns + "/clients", clientId, function(error, res) {
       if (error) {
-        return self._server.error("Failed to remove client channels ?: ?", clientChannelsKey, error);
+        return self._server.error("Failed to remove client ID ? from /clients: ?", clientId, error);
       }
-      self._redis.del(clientMessagesKey, function(error, res) {
-        if (error) {
-          return self._server.error("Failed to remove client messages ?: ?", clientMessagesKey, error);
-        }
-        self._redis.zrem(self._ns + "/clients", clientId, function(error, res) {
-          if (error) {
-            return self._server.error("Failed to remove client ID ? from /clients: ?", clientId, error);
-          }
-          self._server.debug("Destroyed client ? successfully", clientId);
-          self._server.trigger("disconnect", clientId);
-          if (callback) {
-            callback.call(context);
-          }
-        });
-      });
+      self._server.debug("Destroyed client ? successfully", clientId);
+      self._server.trigger("disconnect", clientId);
+      if (callback) {
+        callback.call(context);
+      }
     });
   },
 
