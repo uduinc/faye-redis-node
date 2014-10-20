@@ -226,17 +226,16 @@ Engine.prototype = {
   // removes the client ID from all the channels that it's a member of. This
   // prevents messages from being published to that client.
   //
-  // For any Redis failures, we simply return without calling any further
-  // callbacks. This stops the client cleanup, but that's okay. Since the
-  // client ID is still in the sorted set, it will get mopped up in the next
-  // GC cycle (hopefully).
+  // In a reversal of earlier behavior, callbacks are now _always_ called,
+  // but with an argument that indicates whether or not the destroy actually
+  // succeeded.
   destroyClient: function(clientId, callback, context) {
     var self = this;
     var clientChannelsKey = this._ns + "/clients/" + clientId + "/channels";
 
     this._redis.smembers(clientChannelsKey, function(error, channels) {
       if (error) {
-        return self._server.error("Failed to fetch channels: ?", error);
+        return self._failGC(callback, context, "Failed to fetch channels ?: ?", clientChannelsKey, error);
       }
 
       var numChannels = channels.length, numUnsubscribes = 0;
@@ -249,7 +248,7 @@ Engine.prototype = {
         var channelsKey = self._ns + "/channels" + channel;
         self._redis.srem(channelsKey, clientId, function(error, res) {
           if (error) {
-            return self._server.error("Failed to remove client ? from ?: ?", clientId, channelsKey, error);
+            return self._failGC(callback, context, "Failed to remove client ? from ?: ?", clientId, channelsKey, error);
           }
           numUnsubscribes += 1;
           self._server.trigger("unsubscribe", clientId, channel);
@@ -275,12 +274,12 @@ Engine.prototype = {
     this._redis.del(clientMessagesKey);
     this._redis.zrem(self._ns + "/clients", clientId, function(error, res) {
       if (error) {
-        return self._server.error("Failed to remove client ID ? from /clients: ?", clientId, error);
+        return self._failGC(callback, context, "Failed to remove client ID ? from /clients: ?", clientId, error);
       }
       self._server.debug("Destroyed client ? successfully", clientId);
       self._server.trigger("disconnect", clientId);
       if (callback) {
-        callback.call(context);
+        callback.call(context, true);
       }
     });
   },
@@ -402,6 +401,14 @@ Engine.prototype = {
 
       connection.zrangebyscore.apply(connection, args);
     }, this);
+  },
+
+  // A helper function to log a GC error and invoke the callback (if it exists).
+  _failGC: function(callback, context, msg) {
+    this._server.error.apply(this._server, Array.prototype.slice.call(arguments, 2, arguments.length));
+    if (callback) {
+      callback.call(context, false);
+    }
   }
 };
 
