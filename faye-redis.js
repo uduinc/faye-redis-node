@@ -138,28 +138,15 @@ multiRedis.COMMANDS.forEach(function(command) {
 //   disable_subscriptions If set to `true`, then this engine will not subscribe
 //                         to the notifications channel.
 //
-//   gc                    By default, this engine prunes inactive clients by
-//                         running a GC function on an interval. If this option
-//                         is omitted, the GC runs every DEFAULT_GC seconds.
-//                         To change the interval, set this option to an integer
-//                         number of seconds. To completely disable GC, set this
-//                         to `false`.
-//
-//   gc_limit              By default, the GC tries to prune all expired
-//                         clients. This can be set to an integer, however, to
-//                         limit the number of expired clients to process in a
-//                         given GC cycle. Highly recommended.
+//   gc                    When `true`, GC is run continuously in this process.
+//                         Seeing as how it's no longer interval-based, you
+//                         probably only want to set this in a dedicated GC
+//                         process.
 //
 var Engine = function(server, options) {
   this._options = options || {};
 
-  var self = this, gc;
-
-  if (this._options.gc === false) {
-    gc = false;
-  } else {
-    gc = this._options.gc || this.DEFAULT_GC;
-  }
+  var self = this;
 
   this._server     = server;
   this._ns         = this._options.namespace || '';
@@ -171,9 +158,8 @@ var Engine = function(server, options) {
     });
   }
 
-  if (gc) {
-    this._gc_limit = this._options.gc_limit;
-    this._gc = setInterval(function() { self.gc() }, gc * 1000);
+  if (this._options.gc) {
+    this.gc();
   }
 };
 
@@ -374,33 +360,44 @@ Engine.prototype = {
     var timeout = this._server.timeout;
     if (typeof timeout !== 'number') return;
 
+    var self = this;
+
     this._redis.urls.forEach(function(url) {
-      this._server.debug("Running GC for ?", url);
+      this._server.debug("Starting GC loop for ?", url);
+      process.nextTick(function() {
+        this._runGC(url, timeout);
+      }.bind(this));
+    }, this);
+  },
 
-      var connection = this._redis.connections[url],
-          cutoff = new Date().getTime() - 1000 * 2 * timeout,
-          self = this,
-          args;
+  _runGC: function(url, timeout) {
+    var conn = this._redis.connections[url],
+        cutoff = new Date().getTime() - 1000 * 2 * timeout,
+        self = this;
 
-      var pruneClientsCallback = function pruneClientsCallback(error, clients) {
-        if (error) {
-          return self._server.error("Failed to fetch clients to GC: ?", error);
-        }
-        self._server.info("Running GC for ? clients ...", clients.length);
-        clients.forEach(function(clientId) {
-          self._server.debug("GC time for ? ...", clientId);
-          self.destroyClient(clientId);
-        });
-      };
-
-      if (this._gc_limit) {
-        args = [this._ns + "/clients", 0, cutoff, "LIMIT", 0, this._gc_limit, pruneClientsCallback];
-      } else {
-        args = [this._ns + "/clients", 0, cutoff, pruneClientsCallback];
+    conn.zrangebyscore(this._ns + "/clients", 0, cutoff, "LIMIT", 0, 1, function(error, clients) {
+      if (error) {
+        self._server.error("[?] Failed to fetch GC client, retrying in 2 seconds...", url);
+        return setTimeout(self._runGC.bind(self), 2000, url, timeout);
       }
 
-      connection.zrangebyscore.apply(connection, args);
-    }, this);
+      if (clients.length == 0) {
+        self._server.debug("[?] No GC clients, retrying in 2 seconds...", url);
+        return setTimeout(self._runGC.bind(self), 2000, url, timeout);
+      }
+
+      var clientId = clients[0];
+      self.destroyClient(clientId, function(success) {
+        if (success) {
+          self._server.debug("[?] GC succeeded for ?", url, clientId);
+        } else {
+          self._server.warn("[?] GC failed for ?", url, clientId);
+        }
+        process.nextTick(function() {
+          self._runGC(url, timeout);
+        }.bind(self));
+      });
+    });
   },
 
   // A helper function to log a GC error and invoke the callback (if it exists).
