@@ -331,12 +331,19 @@ Engine.prototype = {
       }
       clients.forEach(function(clientId) {
         if (notified.indexOf(clientId) == -1) {
-          self._server.debug('Queueing for client ?: ?', clientId, message);
-          self._redis.rpush(self._ns + '/clients/' + clientId + '/messages', jsonMessage);
-          self._redis.publish(self._ns + '/notifications', clientId);
-          self._redis.expire(self._ns + '/clients/' + clientId + '/messages', 3600)
+          self.clientExists(clientId, function(exists) {
+            if (exists) {
+              self._server.debug('Queueing for client ?: ?', clientId, message);
+              self._redis.rpush(self._ns + '/clients/' + clientId + '/messages', jsonMessage);
+              self._redis.publish(self._ns + '/notifications', clientId);
+              self._redis.expire(self._ns + '/clients/' + clientId + '/messages', 3600)
 
-          notified.push(clientId);
+              notified.push(clientId);
+            } else {
+              self._server.debug("Destroying expired client ? from publish", clientId);
+              self.destroyClient(clientId);
+            }
+          });
         }
       });
     };
