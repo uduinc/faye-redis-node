@@ -7,7 +7,7 @@
 , "version"         : "0.1.12"
 , "engines"         : {"node": ">=0.4.0"}
 , "main"            : "./faye-redis"
-, "dependencies"    : {"hiredis": "", "redis": "", "consistent-hashing": ""}
+, "dependencies"    : {"hiredis": "", "redis": "", "consistent-hashing": "", "node-statsd": ""}
 , "devDependencies" : {"jsclass": ""}
 
 , "scripts"         : {"test": "node spec/runner.js"}
