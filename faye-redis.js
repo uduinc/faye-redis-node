@@ -159,6 +159,15 @@ var Engine = function(server, options) {
   }
 
   if (this._options.gc) {
+    if (process.env.STATSD_URL) {
+      var url = require("url");
+      var statsd = require("node-statsd").StatsD;
+
+      var statsdUrl = url.parse(process.env.STATSD_URL);
+      var prefix = "push." + process.env.NODE_ENV + ".";
+      this.statsd = new statsd(statsdUrl.hostname, statsdUrl.port, prefix);
+    }
+
     this.gc();
   }
 };
@@ -264,6 +273,9 @@ Engine.prototype = {
       }
       self._server.debug("Destroyed client ? successfully", clientId);
       self._server.trigger("disconnect", clientId);
+      if (self.statsd) {
+        self.statsd.increment("gc.success");
+      }
       if (callback) {
         callback.call(context, true);
       }
@@ -403,6 +415,9 @@ Engine.prototype = {
   // A helper function to log a GC error and invoke the callback (if it exists).
   _failGC: function(callback, context, msg) {
     this._server.error.apply(this._server, Array.prototype.slice.call(arguments, 2, arguments.length));
+    if (this.statsd) {
+      this.statsd.increment("gc.failure");
+    }
     if (callback) {
       callback.call(context, false);
     }
