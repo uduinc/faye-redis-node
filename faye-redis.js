@@ -379,6 +379,22 @@ Engine.prototype = {
       process.nextTick(function() {
         this._runGC(url, timeout);
       }.bind(this));
+
+      // Track the number of clients in each shard with a statsd gauge.
+      if (this.statsd) {
+        var host = require("url").parse(url).hostname.replace(/\./g, '_'),
+            conn = this._redis.connections[url],
+            self = this,
+            key = "clients." + host;
+
+        setInterval(function() {
+          conn.zcard(self._ns + "/clients", function(error, n) {
+            if (!error) {
+              self.statsd.gauge(key, n);
+            }
+          });
+        }, 10000);
+      }
     }, this);
   },
 
