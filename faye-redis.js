@@ -2,7 +2,7 @@
 // Redis URL and adds them to a ketema ring. One connection is used for
 // commands and the other is used for pub/sub subscriptions.
 var multiRedis = function(urls) {
-  var hasher = require('consistent-hashing'),
+  var hasher = require('hashring'),
       self   = this;
 
   self.ring          = new hasher(urls);
@@ -117,7 +117,7 @@ multiRedis.prototype = {
 
   // Returns a connection for a given key.
   connectionFor: function(key) {
-    return this.connections[this.ring.getNode(key)];
+    return this.connections[this.ring.get(key)];
   }
 };
 

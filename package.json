@@ -4,11 +4,11 @@
 , "author"          : "James Coglan <jcoglan@gmail.com> (http://jcoglan.com/)"
 , "keywords"        : ["pubsub", "bayeux"]
 
-, "version"         : "0.1.13"
+, "version"         : "0.2.0"
 , "engines"         : {"node": ">=0.4.0"}
 , "main"            : "./faye-redis"
-, "dependencies"    : {"hiredis": "", "redis": "", "consistent-hashing": "", "node-statsd": ""}
-, "devDependencies" : {"jsclass": ""}
+, "dependencies"    : {"hiredis": "", "redis": "", "hashring": "^3.0.0", "node-statsd": ""}
+, "devDependencies" : {"jstest": ""}
 
 , "scripts"         : {"test": "node spec/runner.js"}
 
