@@ -17,10 +17,9 @@
 , "licenses"        : [ { "type"  : "MIT"
                         , "url"   : "http://www.opensource.org/licenses/mit-license.php"
                         }
-                      ]
-
-, "repositories"    : [ { "type"  : "git"
-                        , "url"   : "git://github.com/faye/faye-redis-node.git"
-                        }
-                      ]
+                      ],
+  "repository" : {
+    "type": "git",
+    "url": "git://github.com/faye/faye-redis-node.git"
+  }
 }
