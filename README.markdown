@@ -49,12 +49,11 @@ To run the tests, first start up a local Redis server running on port 16379.
     $ node spec/runner.js
 
 This engine does have some incompatibilities with the spec, and currently
-there are four known test failures:
+there are three known test failures:
 
-1. Redis engine destroyClient when the client has subscriptions stops the client receiving messages:
-2. Redis engine publish with a single wildcard delivers messages to matching subscriptions:
-3. Redis engine publish with a double wildcard delivers a unique copy of the message to each client:
-4. Redis engine publish with a double wildcard delivers messages to matching subscriptions:
+1. Redis engine publish with a single wildcard delivers messages to matching subscriptions:
+2. Redis engine publish with a double wildcard delivers a unique copy of the message to each client:
+3. Redis engine publish with a double wildcard delivers messages to matching subscriptions:
 
 
 ## License
