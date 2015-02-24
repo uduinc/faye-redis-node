@@ -2,7 +2,6 @@ var RedisEngine = require('../faye-redis')
 
 JS.ENV.FayeRedisSpec = JS.Test.describe("Redis engine", function() { with(this) {
   before(function() {
-    var pw = process.env.TRAVIS ? undefined : "foobared"
     this.engineOpts = {
       type: RedisEngine,
       namespace: new Date().getTime().toString(),
@@ -43,6 +42,27 @@ JS.ENV.FayeRedisSpec = JS.Test.describe("Redis engine", function() { with(this) 
       this.engine = new Faye.Engine.Proxy(this.engineOpts);
       var redisEngine = this.engine._engine;
       this.assertNotNull(redisEngine._gc);
+    }})
+
+    it("calls a custom Redis error callback if provided", function(resume) { with(this) {
+      var errorArgs;
+      this.engineOpts.namespace = null;
+      this.engineOpts.onRedisError = function(msg) {
+        errorArgs = Array.prototype.slice.call(arguments);
+      };
+      this.engine = new Faye.Engine.Proxy(this.engineOpts);
+      var redisEngine = this.engine._engine;
+
+      // Fake the error, since creating a real one is hard.
+      redisEngine._redis.smembers = function(key, callback) {
+        callback.call(this, new Error("Oops!"), null);
+      };
+
+      redisEngine.destroyClient("CLIENT-ID", function() {
+        resume(function() {
+          assertEqual([new Error("Oops!"), "Failed to fetch channels /clients/CLIENT-ID/channels"], errorArgs);
+        });
+      }, this);
     }})
   }})
 }})

@@ -134,7 +134,7 @@ multiRedis.COMMANDS.forEach(function(command) {
 
 // Creates a new Faye Redis engine.
 //
-// Options:
+// Custom options:
 //   disable_subscriptions If set to `true`, then this engine will not subscribe
 //                         to the notifications channel.
 //
@@ -142,6 +142,11 @@ multiRedis.COMMANDS.forEach(function(command) {
 //                         Seeing as how it's no longer interval-based, you
 //                         probably only want to set this in a dedicated GC
 //                         process.
+//
+//   onRedisError          If provided, then this will be called for Redis
+//                         errors, and will be passed the error returned from
+//                         the Redis driver and a message. If unset, then we'll
+//                         simply log these errors.
 //
 var Engine = function(server, options) {
   this._options = options || {};
@@ -151,6 +156,13 @@ var Engine = function(server, options) {
   this._server     = server;
   this._ns         = this._options.namespace || '';
   this._redis      = new multiRedis(options.servers);
+  this._onRedisError = this._options.onRedisError;
+
+  if (!this._onRedisError) {
+    this._onRedisError = function(error, message) {
+      this._server.error.apply(this._server, [error, message]);
+    }
+  }
 
   if (!this._options.disable_subscriptions) {
     this._redis.subscribe(this._ns + '/notifications', function(topic, message) {
@@ -230,7 +242,8 @@ Engine.prototype = {
 
     this._redis.smembers(clientChannelsKey, function(error, channels) {
       if (error) {
-        return self._failGC(callback, context, "Failed to fetch channels ?: ?", clientChannelsKey, error);
+        self._onRedisError(error, "Failed to fetch channels "+clientChannelsKey);
+        return self._failGC(callback, context);
       }
 
       var numChannels = channels.length, numUnsubscribes = 0;
@@ -243,7 +256,8 @@ Engine.prototype = {
         var channelsKey = self._ns + "/channels" + channel;
         self._redis.srem(channelsKey, clientId, function(error, res) {
           if (error) {
-            return self._failGC(callback, context, "Failed to remove client ? from ?: ?", clientId, channelsKey, error);
+            self._onRedisError(error, "Failed to remove client "+clientId+" from "+channelsKey);
+            return self._failGC(callback, context);
           }
           numUnsubscribes += 1;
           self._server.trigger("unsubscribe", clientId, channel);
@@ -269,7 +283,8 @@ Engine.prototype = {
     this._redis.del(clientMessagesKey);
     this._redis.zrem(self._ns + "/clients", clientId, function(error, res) {
       if (error) {
-        return self._failGC(callback, context, "Failed to remove client ID ? from /clients: ?", clientId, error);
+        self._onRedisError(error, "Failed to remove from /clients, client ID "+clientId);
+        return self._failGC(callback, context);
       }
       self._server.debug("Destroyed client ? successfully", clientId);
       self._server.trigger("disconnect", clientId);
@@ -429,8 +444,7 @@ Engine.prototype = {
   },
 
   // A helper function to log a GC error and invoke the callback (if it exists).
-  _failGC: function(callback, context, msg) {
-    this._server.error.apply(this._server, Array.prototype.slice.call(arguments, 2, arguments.length));
+  _failGC: function(callback, context) {
     if (this.statsd) {
       this.statsd.increment("gc.failure");
     }
