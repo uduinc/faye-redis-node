@@ -132,6 +132,12 @@ multiRedis.COMMANDS.forEach(function(command) {
   }
 });
 
+// A mock, no-op statsd client.
+var NoStatsD = {
+  increment: function() {},
+  gauge:     function() {}
+};
+
 // Creates a new Faye Redis engine.
 //
 // Custom options:
@@ -148,6 +154,10 @@ multiRedis.COMMANDS.forEach(function(command) {
 //                         the Redis driver and a message. If unset, then we'll
 //                         simply log these errors.
 //
+//   statsd                Pass a statsd object that implements increment() and
+//                         gauge() in order get GC & client statistics. Stats
+//                         published with the "faye_redis." namespace.
+//
 var Engine = function(server, options) {
   this._options = options || {};
 
@@ -157,6 +167,7 @@ var Engine = function(server, options) {
   this._ns         = this._options.namespace || '';
   this._redis      = new multiRedis(options.servers);
   this._onRedisError = this._options.onRedisError;
+  this._statsd = this._options.statsd || NoStatsD;
 
   if (!this._onRedisError) {
     this._onRedisError = function(error, message) {
@@ -171,15 +182,6 @@ var Engine = function(server, options) {
   }
 
   if (this._options.gc) {
-    if (process.env.STATSD_URL) {
-      var url = require("url");
-      var statsd = require("node-statsd").StatsD;
-
-      var statsdUrl = url.parse(process.env.STATSD_URL);
-      var prefix = "push." + process.env.NODE_ENV + ".";
-      this.statsd = new statsd(statsdUrl.hostname, statsdUrl.port, prefix);
-    }
-
     this.gc();
   }
 };
@@ -288,9 +290,7 @@ Engine.prototype = {
       }
       self._server.debug("Destroyed client ? successfully", clientId);
       self._server.trigger("disconnect", clientId);
-      if (self.statsd) {
-        self.statsd.increment("gc.success");
-      }
+      self._statsd.increment("faye_redis.gc_success");
       if (callback) {
         callback.call(context, true);
       }
@@ -396,20 +396,19 @@ Engine.prototype = {
       }.bind(this));
 
       // Track the number of clients in each shard with a statsd gauge.
-      if (this.statsd) {
-        var host = require("url").parse(url).hostname.replace(/\./g, '_'),
-            conn = this._redis.connections[url],
-            self = this,
-            key = "clients." + host;
+      var host = require("url").parse(url).hostname.replace(/\./g, '_'),
+          conn = this._redis.connections[url],
+          self = this,
+          key = "faye_redis.num_clients",
+          tag = "backend:" + host;
 
-        setInterval(function() {
-          conn.zcard(self._ns + "/clients", function(error, n) {
-            if (!error) {
-              self.statsd.gauge(key, n);
-            }
-          });
-        }, 10000);
-      }
+      setInterval(function() {
+        conn.zcard(self._ns + "/clients", function(error, n) {
+          if (!error) {
+            self._statsd.gauge(key, n, 1, [tag]);
+          }
+        });
+      }, 10000);
     }, this);
   },
 
@@ -445,9 +444,7 @@ Engine.prototype = {
 
   // A helper function to log a GC error and invoke the callback (if it exists).
   _failGC: function(callback, context) {
-    if (this.statsd) {
-      this.statsd.increment("gc.failure");
-    }
+    this._statsd.increment("faye_redis.gc_failure");
     if (callback) {
       callback.call(context, false);
     }
