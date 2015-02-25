@@ -399,7 +399,7 @@ Engine.prototype = {
       var host = require("url").parse(url).hostname.replace(/\./g, '_'),
           conn = this._redis.connections[url],
           self = this,
-          key = "faye_redis.num_clients",
+          key = "faye_redis.clients",
           tag = "backend:" + host;
 
       setInterval(function() {
