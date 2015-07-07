@@ -1,7 +1,7 @@
 // Constructor for multiRedis. It sets up two connections for each provided
 // Redis URL and adds them to a ketema ring. One connection is used for
 // commands and the other is used for pub/sub subscriptions.
-var multiRedis = function(urls) {
+var multiRedis = function(urls, redisClientOpts) {
   var hasher = require('hashring'),
       self   = this;
 
@@ -13,8 +13,8 @@ var multiRedis = function(urls) {
   urls.forEach(function(url) {
     var options = self.parse(url);
 
-    var connection   = self.connect(options);
-    var subscription = self.connect(options);
+    var connection   = self.connect(options, redisClientOpts);
+    var subscription = self.connect(options, redisClientOpts);
 
     self.connections[url]   = connection;
     self.subscriptions[url] = subscription;
@@ -72,9 +72,18 @@ multiRedis.prototype = {
   //   hostname: 'localhost',
   //   database: 0,
   //   password: 'chunkybacon' }
-  connect: function(server) {
+  connect: function(server, opts) {
     var redis      = require('redis'),
-        connection = redis.createClient(server.port, server.hostname);
+        connection = redis.createClient(server.port, server.hostname, opts);
+
+    if ( opts.eventListeners )
+    {
+      for ( var listener in opts.eventListeners ) {
+        if ( opts.eventListeners.hasOwnProperty( listener ) && typeof opts.eventListeners[listener] === 'function' ) {
+          connection.on( listener, opts.eventListeners[listener] );
+        }
+      }
+    }  
 
     connection.select(server.database);
 
@@ -165,7 +174,7 @@ var Engine = function(server, options) {
 
   this._server     = server;
   this._ns         = this._options.namespace || '';
-  this._redis      = new multiRedis(options.servers);
+  this._redis      = new multiRedis(options.servers, options.redisClientOpts);
   this._onRedisError = this._options.onRedisError;
   this._statsd = this._options.statsd || NoStatsD;
 
